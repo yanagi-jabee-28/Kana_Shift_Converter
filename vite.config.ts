@@ -7,7 +7,27 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     base: '/Kana_Shift_Converter/',
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(), 
+      tailwindcss(),
+      {
+        name: 'kuromoji-dict-middleware',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url && req.url.includes('/dict/') && req.url.endsWith('.dat.gz')) {
+              const originalSetHeader = res.setHeader;
+              res.setHeader = function(name: string, value: any) {
+                if (name.toLowerCase() === 'content-encoding' && value === 'gzip') {
+                  return this;
+                }
+                return originalSetHeader.call(this, name, value);
+              };
+            }
+            next();
+          });
+        }
+      }
+    ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
