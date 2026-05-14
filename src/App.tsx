@@ -110,7 +110,7 @@ const CharacterAudit = ({ direction, mode }: { direction: 'jp2mk' | 'mk2jp', mod
 
 export default function App() {
   const [direction, setDirection] = useState<'jp2mk' | 'mk2jp'>('jp2mk');
-  const [mode, setMode] = useState<TranslationMode>('deep');
+  const [mode, setMode] = useState<TranslationMode>('echo');
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -296,13 +296,9 @@ export default function App() {
         </div>
 
         {/* Mode Selector */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-1 p-1 glass-morphism rounded-2xl">
+        <div className="grid grid-cols-2 gap-2 p-1 glass-morphism rounded-2xl">
           {[
-            { id: 'deep', label: '深淵 (DEEP)', desc: 'C+V Shift' },
             { id: 'echo', label: '残響 (ECHO)', desc: 'C Only' },
-            { id: 'chaos', label: '渾沌 (CHAOS)', desc: 'Dynamic C+V' },
-            { id: 'silent', label: '沈黙 (SILENT)', desc: 'Fixed Proxies' },
-            { id: 'whisper', label: '幽玄 (WHISPER)', desc: 'C Only' },
             { id: 'eclipse', label: '蝕 (ECLIPSE)', desc: 'Dynamic Proxies' }
           ].map((m) => (
             <button
