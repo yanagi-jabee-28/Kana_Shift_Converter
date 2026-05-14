@@ -10,58 +10,41 @@ export interface ConversionStatus {
   error?: string;
 }
 
-// Global state for Sudachi
-let sudachiInstance: any = null;
+import Kuroshiro from "kuroshiro";
+import KuromojiAnalyzer from "kuroshiro-analyzer-kuromoji";
+
+// Global state for Kuroshiro
+let kuroshiroInstance: any = null;
 let isInitializing = false;
+let initFailed = false;
 
 /**
- * Initialize Sudachi-WASM and load dictionary
+ * Initialize Kuroshiro and load Kuromoji dictionary
  */
-async function initSudachi() {
-  if (sudachiInstance !== null) return sudachiInstance;
+async function initKuroshiro() {
+  if (kuroshiroInstance !== null) return kuroshiroInstance;
+  if (initFailed) return null; // Prevent retry loops
   if (isInitializing) {
     while (isInitializing) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    return sudachiInstance;
+    return kuroshiroInstance;
   }
 
   isInitializing = true;
   try {
-    // Import the WASM glue code
-    const { default: init, loadDictionary } = await import('@f3liz/sudachi-wasm');
-    
-    // Initialize WASM with the modern object-based signature
+    const kuroshiro = new Kuroshiro();
     const baseUrl = (import.meta as any).env.BASE_URL || '/';
-    await init({ module_or_path: `${baseUrl}sudachi/sudachi_wasm_bg.wasm` });
+    // Kuromoji needs the path to the dictionary directory containing .dat.gz files
+    const dictPath = `${baseUrl}dict/`;
     
-    // Fetch and load dictionary
-    const dicPath = `${baseUrl}sudachi/system_small.dic`;
-    const dicResponse = await fetch(dicPath);
-    if (!dicResponse.ok) {
-      throw new Error(`Failed to fetch Sudachi dictionary from ${dicPath} (Status: ${dicResponse.status})`);
-    }
-    
-    const dicData = await dicResponse.arrayBuffer();
-    if (dicData.byteLength === 0) {
-      throw new Error('Fetched Sudachi dictionary is empty');
-    }
-    
-    // Note: sudachi-wasm (Rust implementation) usually expects .xdic format.
-    // If system_small.dic is in standard Java-Sudachi format, this may throw "unreachable".
-    try {
-      sudachiInstance = loadDictionary(new Uint8Array(dicData));
-    } catch (loadErr) {
-      // Log specific error but don't crash the whole service initialization
-      console.error("Critical: loadDictionary failed. This often means the .dic file is incompatible with sudachi-wasm (needs .xdic format).", loadErr);
-      sudachiInstance = null;
-      throw loadErr;
-    }
-    
-    return sudachiInstance;
+    await kuroshiro.init(new KuromojiAnalyzer({ dictPath }));
+    kuroshiroInstance = kuroshiro;
+    return kuroshiroInstance;
   } catch (err) {
-    console.warn("Terrestrial Mode (Sudachi) is disabled due to initialization failure. Kanji will not be analyzed.", err);
-    isInitializing = false;
+    console.warn("Terrestrial Mode (Kuroshiro) is disabled due to initialization failure. Kanji will not be analyzed.", err);
+    initFailed = true;
+    kuroshiroInstance = null;
     return null;
   } finally {
     isInitializing = false;
@@ -93,29 +76,16 @@ async function convertWithGemini(text: string): Promise<string> {
 }
 
 /**
- * Convert text to Kana reading using Sudachi-WASM (Terrestrial Mode)
+ * Convert text to Kana reading using Kuroshiro (Terrestrial Mode)
  */
-async function convertWithSudachi(text: string): Promise<string> {
-  const handle = await initSudachi();
-  if (!handle) {
-    throw new Error('Sudachi engine not available (Dictionary missing or incompatible)');
+async function convertWithKuroshiro(text: string): Promise<string> {
+  const kuroshiro = await initKuroshiro();
+  if (!kuroshiro) {
+    throw new Error('Kuroshiro engine not available (Dictionary missing or incompatible)');
   }
-  const { tokenize } = await import('@f3liz/sudachi-wasm');
   
-  // tokenize(handle, text, mode)
-  // mode: 0 = Mode A (short), 1 = Mode B (middle), 2 = Mode C (long)
-  const tokens = tokenize(handle, text, 0);
-  
-  let reading = '';
-  for (const t of tokens) {
-    // Properties, not methods
-    const r = t.reading; 
-    if (r && r !== '*') {
-      reading += wanakana.toHiragana(r);
-    } else {
-      reading += wanakana.toHiragana(t.surface);
-    }
-  }
+  // Convert to hiragana
+  const reading = await kuroshiro.convert(text, { to: 'hiragana' });
   return reading;
 }
 
@@ -137,16 +107,16 @@ export async function convertToKanaReading(
   } catch (err) {
     console.warn("Celestial connection lost, falling back to Terrestrial mode...", err);
     
-    // Fallback to Sudachi
+    // Fallback to Kuroshiro
     try {
       onStatusChange?.({ engine: 'terrestrial', isLoading: true });
-      const result = await convertWithSudachi(text);
+      const result = await convertWithKuroshiro(text);
       onStatusChange?.({ engine: 'terrestrial', isLoading: false });
       return result;
     } catch (fallbackErr) {
-      // Avoid excessive error logging on every keystroke if Sudachi is already known to be broken
-      if (sudachiInstance === null) {
-        // Just fail silently if we already know Sudachi isn't loaded
+      // Avoid excessive error logging on every keystroke if Kuroshiro is already known to be broken
+      if (initFailed) {
+        // Just fail silently if we already know Kuroshiro isn't loaded
       } else {
         console.error("Terrestrial backup failed:", fallbackErr);
       }

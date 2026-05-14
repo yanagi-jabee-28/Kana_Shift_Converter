@@ -57,13 +57,6 @@ jobs:
       - name: Install dependencies
         run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
         
-      - name: Download Sudachi Dictionary
-        # 巨大な辞書ファイルはGitに含めず、デプロイ時にビルドサーバーで取得する
-        # 公式配布の .dic は現在のWASMエンジンと互換性がないため、f3liz-casaの配布版を使用
-        run: |
-          mkdir -p public/sudachi
-          curl -L -o public/sudachi/system_small.dic https://f3liz-casa.github.io/sudachi-wasm/system_small.dic
-
       - name: Build with Vite
         # Viteのビルドコマンドを実行
         run: npm run build
