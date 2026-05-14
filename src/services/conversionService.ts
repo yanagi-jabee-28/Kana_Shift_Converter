@@ -60,7 +60,7 @@ async function initSudachi() {
     
     return sudachiInstance;
   } catch (err) {
-    console.warn("Sudachi (Terrestrial) initialization failed. Offline Kanji analysis will be unavailable.", err);
+    console.warn("Terrestrial Mode (Sudachi) is disabled due to initialization failure. Kanji will not be analyzed.", err);
     isInitializing = false;
     return null;
   } finally {
@@ -144,10 +144,13 @@ export async function convertToKanaReading(
       onStatusChange?.({ engine: 'terrestrial', isLoading: false });
       return result;
     } catch (fallbackErr) {
-      console.error("Terrestrial backup failed:", fallbackErr);
+      // Avoid excessive error logging on every keystroke if Sudachi is already known to be broken
+      if (sudachiInstance === null) {
+        // Just fail silently if we already know Sudachi isn't loaded
+      } else {
+        console.error("Terrestrial backup failed:", fallbackErr);
+      }
       
-      // Final fallback: Just convert existing Kana and leave Kanji as is
-      // This is better than returning nothing or crashing.
       onStatusChange?.({ engine: 'none', isLoading: false, error: 'Conversion engines unavailable. Using raw text.' });
       return wanakana.toHiragana(text);
     }

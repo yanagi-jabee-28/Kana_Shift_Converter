@@ -59,12 +59,10 @@ jobs:
         
       - name: Download Sudachi Dictionary
         # 巨大な辞書ファイルはGitに含めず、デプロイ時にビルドサーバーで取得する
+        # 公式配布の .dic は現在のWASMエンジンと互換性がないため、f3liz-casaの配布版を使用
         run: |
           mkdir -p public/sudachi
-          curl -L -o sudachi-dic.zip https://github.com/WorksApplications/SudachiDict/releases/download/v20241021/sudachi-dictionary-20241021-small.zip
-          unzip sudachi-dic.zip
-          mv sudachi-dictionary-20241021/system_small.dic public/sudachi/system_small.dic
-          rm sudachi-dic.zip
+          curl -L -o public/sudachi/system_small.dic https://f3liz-casa.github.io/sudachi-wasm/system_small.dic
 
       - name: Build with Vite
         # Viteのビルドコマンドを実行
