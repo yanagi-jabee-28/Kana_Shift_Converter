@@ -214,7 +214,7 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
         const offset = isDynamic ? getDynamicOffset(kanaCount, 15) : 1;
         kanaCount++;
 
-        if (mode === 'silent' || mode === 'whisper' || mode === 'eclipse') {
+        if (mode === 'silent' || mode === 'whisper' || mode === 'eclipse' || mode === 'echo') {
           // 15行モデル
           const rotation = [0, 10, 5, 1, 11, 6, 2, 12, 7, 3, 13, 8, 4, 14, 9];
           const idx = rotation.indexOf(r);
@@ -228,15 +228,22 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
           }
           const newR = rotation[newR_idx]!;
 
-          const newC = shiftVowel(c, forward, mode); // Whisper/Eclipse might preserve vowel differently?
+          const newC = shiftVowel(c, forward, mode); // Whisper/Eclipse/Echo might preserve vowel differently
           
-          if (!forward) {
+          if (mode === 'echo') {
+            // Echo mode outputs natural Hiragana (including natively voiced ones) for both directions
             if (newR < 10) return (MATRIX[newR]![newC]! + token.smallChars).normalize('NFC');
             return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
+          } else {
+            // Silent/Whisper/Eclipse mode hides marks by using EXTENDED_MATRIX (Katakana) in forward direction
+            if (!forward) {
+              if (newR < 10) return (MATRIX[newR]![newC]! + token.smallChars).normalize('NFC');
+              return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
+            }
+            return EXTENDED_MATRIX[newR]![newC]! + token.smallChars;
           }
-          return EXTENDED_MATRIX[newR]![newC]! + token.smallChars;
         } else {
-          // Deep/Echo/Chaosモード
+          // Deep/Chaosモード
           let baseR = r;
           let mark = '';
           if (r >= 10 && r <= 13) { 
@@ -277,7 +284,7 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
 export function getTransformationMap(forward: boolean, mode: TranslationMode = 'deep') {
   const map: Record<string, string> = {};
   
-  if (mode === 'silent' || mode === 'whisper' || mode === 'eclipse') {
+  if (mode === 'silent' || mode === 'whisper' || mode === 'eclipse' || mode === 'echo') {
     // 15 rows: (Base Hiragana 0-9) + (Voiced Sources 10-14)
     for (let r = 0; r < 15; r++) {
       for (let c = 0; c < 5; c++) {
@@ -293,13 +300,17 @@ export function getTransformationMap(forward: boolean, mode: TranslationMode = '
         const newR = rotation[newR_idx]!;
 
         const newC = shiftVowel(c, forward, mode);
+        const resultChar = newR < 10 ? MATRIX[newR]![newC]! : VOICED_SOURCES[newR - 10]![newC]!;
         
-        if (!forward) {
-           const targetChar = EXTENDED_MATRIX[r]![c]!;
-           const resultChar = newR < 10 ? MATRIX[newR]![newC]! : VOICED_SOURCES[newR - 10]![newC]!;
-           map[targetChar] = resultChar;
+        if (mode === 'echo') {
+           map[srcChar] = resultChar;
         } else {
-           map[srcChar] = EXTENDED_MATRIX[newR]![newC]!;
+           if (!forward) {
+              const targetChar = EXTENDED_MATRIX[r]![c]!;
+              map[targetChar] = resultChar;
+           } else {
+              map[srcChar] = EXTENDED_MATRIX[newR]![newC]!;
+           }
         }
       }
     }
