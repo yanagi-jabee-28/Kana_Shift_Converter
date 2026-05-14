@@ -60,7 +60,7 @@ async function convertWithGemini(text: string): Promise<string> {
     throw new Error('API key not configured. Please set VITE_GEMINI_API_KEY in .env');
   }
 
-  const ai = new GoogleGenAI(apiKey);
+  const ai = new GoogleGenAI({ apiKey });
   
   // New Unified SDK API (@google/genai v1.0.0+)
   const response = await ai.models.generateContent({
