@@ -32,10 +32,11 @@ async function initSudachi() {
     const { default: init, loadDictionary } = await import('@f3liz/sudachi-wasm');
     
     // Initialize WASM with the modern object-based signature
-    await init({ module_or_path: '/sudachi/sudachi_wasm_bg.wasm' });
+    const baseUrl = (import.meta as any).env.BASE_URL || '/';
+    await init({ module_or_path: `${baseUrl}sudachi/sudachi_wasm_bg.wasm` });
     
     // Fetch and load dictionary
-    const dicPath = '/sudachi/system_small.dic';
+    const dicPath = `${baseUrl}sudachi/system_small.dic`;
     const dicResponse = await fetch(dicPath);
     if (!dicResponse.ok) {
       throw new Error(`Failed to fetch Sudachi dictionary from ${dicPath} (Status: ${dicResponse.status})`);
