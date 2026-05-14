@@ -63,7 +63,7 @@ jobs:
           mkdir -p public/sudachi
           curl -L -o sudachi-dic.zip https://github.com/WorksApplications/SudachiDict/releases/download/v20241021/sudachi-dictionary-20241021-small.zip
           unzip sudachi-dic.zip
-          mv system_small.dic public/sudachi/system_small.dic
+          mv sudachi-dictionary-20241021/system_small.dic public/sudachi/system_small.dic
           rm sudachi-dic.zip
 
       - name: Build with Vite
