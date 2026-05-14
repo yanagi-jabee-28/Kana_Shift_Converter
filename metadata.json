@@ -1,0 +1,6 @@
+{
+  "name": "Kana Shift Converter",
+  "description": "五十音の配列に基づき、日本語の文字を特定の規則で変換・復元する文字変換アプリケーションです。",
+  "requestFramePermissions": ["clipboard-read", "clipboard-write"],
+  "majorCapabilities": []
+}
