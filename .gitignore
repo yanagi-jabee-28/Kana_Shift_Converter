@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Dictionaries (Large files)
+public/sudachi/*.dic
+public/sudachi/*.xdic

@@ -16,7 +16,7 @@ import {
   Link2
 } from 'lucide-react';
 import { translate, getTransformationMap, katakanaToHiragana, TranslationMode } from './lib/meikoku-engine';
-import { convertToKanaReading } from './services/geminiService';
+import { convertToKanaReading, ConversionStatus } from './services/conversionService';
 
 // --- Types ---
 
@@ -117,6 +117,7 @@ export default function App() {
   const [isTranslating, setIsTranslating] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [conversionStatus, setConversionStatus] = useState<ConversionStatus>({ engine: 'none', isLoading: false });
 
   const [pasteError, setPasteError] = useState(false);
 
@@ -174,7 +175,7 @@ export default function App() {
     try {
       let translated = '';
       if (direction === 'jp2mk') {
-        const kanaText = await convertToKanaReading(input);
+        const kanaText = await convertToKanaReading(input, setConversionStatus);
         const phoneticText = katakanaToHiragana(kanaText);
         translated = translate(phoneticText, true, mode);
       } else {
@@ -266,12 +267,22 @@ export default function App() {
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span className="text-[10px] uppercase tracking-tighter font-mono text-emerald-800">
-              冥刻同期完了
+              {conversionStatus.isLoading ? '同期中...' : '冥刻同期完了'}
             </span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/30 border border-emerald-900/20">
+               <div className={`w-1 h-1 rounded-full ${conversionStatus.engine === 'celestial' ? 'bg-emerald-400 animate-pulse' : conversionStatus.engine === 'terrestrial' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-900'}`} />
+               <span className="text-[7px] font-mono text-emerald-700 uppercase tracking-widest">
+                 {conversionStatus.engine === 'celestial' ? 'Celestial' : conversionStatus.engine === 'terrestrial' ? 'Terrestrial' : 'Idle'}
+               </span>
+            </div>
             <div className="group relative">
               <Keyboard className="w-3 h-3 text-emerald-900 cursor-help" />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 text-[9px] text-emerald-400 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
-                高位知能機構が漢字の読みを自動推測し、ひらがなに開いてから冥刻へ変換します。
+                {conversionStatus.engine === 'terrestrial' 
+                  ? '地上書庫（Sudachi-WASM）が漢字を解析し、ひらがなに開いてから冥刻へ変換します。' 
+                  : conversionStatus.engine === 'celestial'
+                  ? '高位知能機構（Gemini）が漢字の読みを自動推測し、ひらがなに開いてから冥刻へ変換します。'
+                  : '【警告】現在、漢字の読み解析が利用できません。漢字は変換されずにそのまま出力されます。解析にはGemini APIキーまたは互換性のあるSudachi辞書（.xdic）が必要です。'}
               </div>
             </div>
           </div>
