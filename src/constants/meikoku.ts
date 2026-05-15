@@ -29,3 +29,6 @@ export const SPECIAL_PAIRS: Record<string, string> = {
   'っ': 'が',
   'が': 'っ'
 };
+export const NUMBERS = '0123456789';
+export const ALPHA_UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+export const ALPHA_LOWER = 'abcdefghijklmnopqrstuvwxyz';

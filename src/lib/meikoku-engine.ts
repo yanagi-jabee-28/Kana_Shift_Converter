@@ -6,10 +6,13 @@ import {
   V_CYCLE_FWD, 
   V_CYCLE_BWD, 
   SMALL_CHARS, 
-  SPECIAL_PAIRS 
+  SPECIAL_PAIRS,
+  NUMBERS,
+  ALPHA_UPPER,
+  ALPHA_LOWER
 } from '../constants/meikoku';
 
-export type TokenType = 'kana' | 'special' | 'other';
+export type TokenType = 'kana' | 'special' | 'number' | 'alpha' | 'other';
 export type TranslationMode = 'deep' | 'echo' | 'silent' | 'whisper' | 'chaos' | 'eclipse';
 
 export interface Token {
@@ -149,6 +152,24 @@ export function tokenize(rawText: string): Token[] {
       matched = true;
     }
 
+    if (matched) continue;
+
+    // 3. 数字のチェック
+    if (NUMBERS.includes(text[i]!)) {
+      tokens.push({ type: 'number', char: text[i]!, dakuten: '', smallChars: '', original: text[i]! });
+      i++;
+      matched = true;
+      continue;
+    }
+
+    // 4. アルファベットのチェック
+    if (ALPHA_UPPER.includes(text[i]!) || ALPHA_LOWER.includes(text[i]!)) {
+      tokens.push({ type: 'alpha', char: text[i]!, dakuten: '', smallChars: '', original: text[i]! });
+      i++;
+      matched = true;
+      continue;
+    }
+
     if (!matched) {
       tokens.push({ type: 'other', char: text[i]!, dakuten: '', smallChars: '', original: text[i]! });
       i++;
@@ -173,11 +194,35 @@ function getDynamicOffset(index: number, max: number): number {
 export function translate(text: string, forward: boolean, mode: TranslationMode = 'deep'): string {
   if (!text) return '';
   const tokens = tokenize(text);
-  let kanaCount = 0;
+  let transformedCount = 0;
   
   return tokens.map(token => {
     if (token.type === 'special') {
       return SPECIAL_PAIRS[token.char] ?? token.char;
+    }
+
+    const isDynamic = mode === 'chaos' || mode === 'eclipse';
+    
+    if (token.type === 'number') {
+      const offset = isDynamic ? getDynamicOffset(transformedCount, 15) : 1;
+      transformedCount++;
+      const set = NUMBERS;
+      const idx = set.indexOf(token.char);
+      const len = set.length;
+      // 可逆性を保つため、backward時は offset % len を引く
+      const newIdx = (idx + (forward ? offset : len - (offset % len))) % len;
+      return set[newIdx]!;
+    }
+
+    if (token.type === 'alpha') {
+      const offset = isDynamic ? getDynamicOffset(transformedCount, 15) : 1;
+      transformedCount++;
+      const isUpper = ALPHA_UPPER.includes(token.char);
+      const set = isUpper ? ALPHA_UPPER : ALPHA_LOWER;
+      const idx = set.indexOf(token.char);
+      const len = set.length;
+      const newIdx = (idx + (forward ? offset : len - (offset % len))) % len;
+      return set[newIdx]!;
     }
     
     if (token.type === 'kana') {
@@ -210,9 +255,8 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
       }
       
       if (r !== -1 && c !== -1) {
-        const isDynamic = mode === 'chaos' || mode === 'eclipse';
-        const offset = isDynamic ? getDynamicOffset(kanaCount, 15) : 1;
-        kanaCount++;
+        const offset = isDynamic ? getDynamicOffset(transformedCount, 15) : 1;
+        transformedCount++;
 
         if (mode === 'silent' || mode === 'whisper' || mode === 'eclipse' || mode === 'echo') {
           // 15行モデル
@@ -224,18 +268,16 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
           if (forward) {
             newR_idx = (idx + offset) % len;
           } else {
-            newR_idx = (idx - offset + len) % len;
+            newR_idx = (idx - (offset % len) + len) % len;
           }
           const newR = rotation[newR_idx]!;
 
-          const newC = shiftVowel(c, forward, mode); // Whisper/Eclipse/Echo might preserve vowel differently
+          const newC = shiftVowel(c, forward, mode);
           
           if (mode === 'echo') {
-            // Echo mode outputs natural Hiragana (including natively voiced ones) for both directions
             if (newR < 10) return (MATRIX[newR]![newC]! + token.smallChars).normalize('NFC');
             return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
           } else {
-            // Silent/Whisper/Eclipse mode hides marks by using EXTENDED_MATRIX (Katakana) in forward direction
             if (!forward) {
               if (newR < 10) return (MATRIX[newR]![newC]! + token.smallChars).normalize('NFC');
               return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
@@ -262,7 +304,7 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
           if (forward) {
             newR_idx = (idx + offset) % len;
           } else {
-            newR_idx = (idx - offset + len) % len;
+            newR_idx = (idx - (offset % len) + len) % len;
           }
           const newR = rowSet[newR_idx]!;
 
@@ -333,6 +375,28 @@ export function getTransformationMap(forward: boolean, mode: TranslationMode = '
         map[srcChar] = newChar;
       }
     }
+  }
+  
+  // 数字の追加
+  for (let i = 0; i < 5; i++) {
+    const char = NUMBERS[i]!;
+    const isDynamic = mode === 'eclipse' || mode === 'chaos';
+    const offset = isDynamic ? getDynamicOffset(0, 15) : 1;
+    const idx = NUMBERS.indexOf(char);
+    const len = NUMBERS.length;
+    const newIdx = (idx + (forward ? offset : len - (offset % len))) % len;
+    map[char] = NUMBERS[newIdx]!;
+  }
+
+  // アルファベットの追加
+  for (let i = 0; i < 5; i++) {
+    const char = ALPHA_UPPER[i]!;
+    const isDynamic = mode === 'eclipse' || mode === 'chaos';
+    const offset = isDynamic ? getDynamicOffset(0, 15) : 1;
+    const idx = ALPHA_UPPER.indexOf(char);
+    const len = ALPHA_UPPER.length;
+    const newIdx = (idx + (forward ? offset : len - (offset % len))) % len;
+    map[char] = ALPHA_UPPER[newIdx]!;
   }
   
   // 特殊文字
