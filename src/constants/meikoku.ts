@@ -23,12 +23,7 @@ export const V_CYCLE_BWD: Record<number, number> = { 1: 3, 3: 4, 4: 1 };
 
 export const SMALL_CHARS = ['ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ゃ', 'ゅ', 'ょ', 'ゎ'];
 
-export const SPECIAL_PAIRS: Record<string, string> = {
-  'ん': 'ゔ',
-  'ゔ': 'ん',
-  'っ': 'が',
-  'が': 'っ'
-};
+export const SPECIAL_PAIRS: Record<string, string> = {};
 export const NUMBERS = '0123456789';
 export const ALPHA_UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 export const ALPHA_LOWER = 'abcdefghijklmnopqrstuvwxyz';

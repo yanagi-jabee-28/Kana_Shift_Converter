@@ -13,9 +13,11 @@ import {
   Clipboard,
   Share2,
   X,
-  Link2
+  Link2,
+  AlertTriangle,
+  ShieldAlert
 } from 'lucide-react';
-import { translate, getTransformationMap, katakanaToHiragana, TranslationMode } from './lib/meikoku-engine';
+import { translate, getTransformationMap, katakanaToHiragana, TranslationMode, verifyBijectivity } from './lib/meikoku-engine';
 import { convertToKanaReading, ConversionStatus } from './services/conversionService';
 
 // --- Types ---
@@ -30,6 +32,85 @@ interface HistoryItem {
 }
 
 // --- Components ---
+
+const IntegrityShield = ({ text, mode }: { text: string, mode: TranslationMode }) => {
+  const result = useMemo(() => {
+    if (!text) return null;
+    return verifyBijectivity(text, mode);
+  }, [text, mode]);
+
+  if (!result) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[9px] font-bold tracking-widest transition-all ${
+        result.ok 
+          ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.1)]' 
+          : 'bg-red-950/40 border-red-500/30 text-red-400 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.1)]'
+      }`}
+    >
+      {result.ok ? (
+        <>
+          <ShieldCheck className="w-2.5 h-2.5" />
+          冥刻整合性 承認 / INTEGRITY VERIFIED
+        </>
+      ) : (
+        <>
+          <X className="w-2.5 h-2.5" />
+          整合性 崩壊 / INTEGRITY ERROR at index {result.diffIdx}
+        </>
+      )}
+    </motion.div>
+  );
+};
+
+const IntegritySimulator = ({ input }: { input: string }) => {
+  const modes: TranslationMode[] = ['deep', 'echo', 'silent', 'whisper', 'chaos', 'eclipse'];
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="w-full max-w-3xl px-4 mt-2 mb-6">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={!input}
+        className={`w-full flex items-center justify-center gap-2 p-2 text-[8px] tracking-[0.3em] font-bold transition-all border border-emerald-900/20 rounded-md bg-emerald-950/5 ${
+          input ? 'text-emerald-500/60 hover:text-emerald-400 hover:bg-emerald-950/20' : 'text-emerald-900/20 opacity-30'
+        }`}
+      >
+        <RotateCw className={`w-2.5 h-2.5 ${isOpen ? 'animate-spin-slow' : ''}`} />
+        全全単射シミュレーション / FULL BIJECTIVITY SIMULATION
+      </button>
+
+      <AnimatePresence>
+        {isOpen && input && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2 overflow-hidden"
+          >
+            {modes.map(m => {
+              const res = verifyBijectivity(input, m);
+              return (
+                <div key={m} className="p-2 bg-black/40 rounded border border-emerald-900/30 flex flex-col gap-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[7px] text-emerald-700 uppercase font-bold tracking-widest">{m}</span>
+                    {res.ok ? <Check className="w-2 h-2 text-emerald-400" /> : <X className="w-2 h-2 text-red-500" />}
+                  </div>
+                  <div className="text-[9px] text-emerald-400 font-serif truncate opacity-60">
+                    {res.forward || '...'}
+                  </div>
+                </div>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 const Header = () => (
   <motion.header 
@@ -72,33 +153,61 @@ const CharacterAudit = ({ direction, mode }: { direction: 'jp2mk' | 'mk2jp', mod
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden glass-morphism rounded-b-lg border-t-0 p-4"
           >
-            <p className="text-[10px] text-emerald-700 mb-4 leading-relaxed">
-              {mode === 'deep' && '深淵変換: 子音と母音を共に回転させ、原義を深淵へ埋没させます。'}
-              {mode === 'echo' && '残響変換: 母音の段を保持しつつ子音のみを回転。発音の響きが幽かに残ります。'}
-              {mode === 'chaos' && '渾沌変換: 文脈依存の動的シフト。同じ文字でも位置により変換先が変わり、解析を困難にします。'}
-              {mode === 'silent' && '沈黙変換: 濁点・半濁点を行列へ吸収。記号の露出を抑えた高度な隠蔽型です。'}
-              {mode === 'whisper' && '幽玄変換: 記号を隠蔽しつつ母音を保持。暗号性と可読性の幽かな均衡を保ちます。'}
-              {mode === 'eclipse' && '蝕変換: 記号隠蔽と動的シフトの融合。秩序ある無秩序が、法則の発見を拒絶します。'}
-            </p>
+            <div className="mb-4">
+              <p className="text-[10px] text-emerald-700 mb-2 leading-relaxed">
+                {mode === 'deep' && '深淵変換: 子音と母音を共に回転させ、原義を深淵へ埋没させます。'}
+                {mode === 'echo' && '残響変換: 母音の段を保持しつつ子音のみを回転。発音の響きが幽かに残ります。'}
+                {mode === 'chaos' && '渾沌変換: 文脈依存の動的シフト。同じ文字でも位置により変換先が変わり、解析を困難にします。'}
+                {mode === 'silent' && '沈黙変換: 濁点・半濁点を行列へ吸収。記号の露出を抑えた高度な隠蔽型です。'}
+                {mode === 'whisper' && '幽玄変換: 記号を隠蔽しつつ母音を保持。暗号性と可読性の幽かな均衡を保ちます。'}
+                {mode === 'eclipse' && '蝕変換: 記号隠蔽と動的シフトの融合。秩序ある無秩序が、法則の発見を拒絶します。'}
+              </p>
+              
+              {/* --- 変換則の提示 (Rule Info) --- */}
+              {mode === 'eclipse' && (
+                <div className="p-3 bg-emerald-950/40 border border-emerald-500/20 rounded-lg text-[9px] font-mono text-emerald-400 mb-4 animate-pulse-slow">
+                  <div className="font-bold mb-1 flex items-center gap-1.5 uppercase tracking-widest text-emerald-300">
+                    <RotateCw className="w-2.5 h-2.5" /> 蝕の変換則 / ECLIPSE PROTOCOL
+                  </div>
+                  <div className="opacity-70 leading-relaxed">
+                    1. 消去系: 濁音・半濁音を基本行列(0-14)へ写像し、記号を秘匿。<br/>
+                    2. 動体系: 文字位置(n)に対し f(n) = (n * 13 + 7) mod 15 の偏位を適用。<br/>
+                    3. 射影: 15行全単射モデル上で偏位量に応じた回転を実行。
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
-              {Object.entries(transMap).slice(0, 18).map(([src, dest]) => (
+              {Object.entries(transMap)
+                .slice(0, mode === 'echo' ? 48 : 18)
+                .map(([src, dest]) => (
                 <div key={src} className="flex flex-col items-center p-2 bg-black/20 rounded border border-emerald-900/10">
                   <span className="text-[10px] text-emerald-900">{src}</span>
                   <div className="h-px w-2 bg-emerald-900 my-1" />
                   <span className="text-xs text-emerald-400 font-bold">{dest}</span>
                 </div>
               ))}
-              <div className="flex flex-col items-center p-2 bg-emerald-900/10 rounded border border-emerald-400/20 col-span-2">
-                 <span className="text-[8px] text-emerald-300 font-bold mb-1">
-                   {mode === 'silent' ? '吸収監査: ぱ' : '半濁音 監査: ぱ'}
-                 </span>
-                 <div className="flex items-center gap-2">
-                   <span className="text-xs text-emerald-900">ぱ</span>
-                   <ArrowLeftRight className="w-2 h-2 text-emerald-700" />
-                   <span className="text-xs text-emerald-400 font-bold">{translate('ぱ', isJpToMk, mode)}</span>
-                 </div>
-              </div>
+              
+              {mode !== 'eclipse' && (
+                <div className="flex flex-col items-center p-2 bg-emerald-900/10 rounded border border-emerald-400/20 col-span-2">
+                  <span className="text-[8px] text-emerald-300 font-bold mb-1 uppercase tracking-tighter">
+                    {mode === 'silent' || mode === 'whisper' ? '吸収監査: ぱ' : '半濁音 監査: ぱ'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-emerald-900">ぱ</span>
+                    <ArrowLeftRight className="w-2 h-2 text-emerald-700" />
+                    <span className="text-xs text-emerald-400 font-bold">{translate('ぱ', isJpToMk, mode)}</span>
+                  </div>
+                </div>
+              )}
             </div>
+            
+            {mode === 'echo' && (
+              <div className="mt-4 text-[8px] text-emerald-900/40 text-center uppercase tracking-[0.2em]">
+                Showing extended transformation matrix for Echo Mode
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -441,11 +550,17 @@ export default function App() {
             <div className={`text-xl md:text-2xl font-serif leading-relaxed ${output ? 'text-emerald-200' : 'text-emerald-900/20 italic'}`}>
               {output || "結果の断片がここに現れる..."}
             </div>
+            
+            {/* Output integrity badge */}
+            <div className="mt-6 flex justify-end">
+              <IntegrityShield text={input} mode={mode} />
+            </div>
           </div>
         </div>
 
-        {/* Quick Audit / Info */}
+        {/* Character Audit & Simulator */}
         <CharacterAudit direction={direction} mode={mode} />
+        <IntegritySimulator input={input} />
 
         {/* History Panel */}
         <AnimatePresence>

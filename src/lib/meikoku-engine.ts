@@ -36,9 +36,13 @@ const SILENT_EXTRA_ROWS = [
   ['ヰ', 'ヱ', 'ヲ', 'ン', 'ヴ'], 
 ];
 
+const SPECIAL_ROW = ['ん', 'っ', 'ゔ', 'ー', '・'];
+const SILENT_SPECIAL_ROW = ['ン', 'ッ', 'ヴ', 'ー', '・'];
+
 const EXTENDED_MATRIX = [
   ...MATRIX,
-  ...SILENT_EXTRA_ROWS
+  ...SILENT_EXTRA_ROWS,
+  SILENT_SPECIAL_ROW
 ];
 
 // Sources of voiced sounds for detection and reconstruction
@@ -102,36 +106,23 @@ function shiftVowel(c: number, forward: boolean, mode: TranslationMode): number 
  * テキストをトークン分割
  */
 export function tokenize(rawText: string): Token[] {
-  // 文字列の正規化（結合済みの濁点・半濁点を考慮しつつNFCで一貫性を保つ）
   const text = rawText.normalize('NFC');
-
   const tokens: Token[] = [];
   let i = 0;
 
   while (i < text.length) {
     let matched = false;
 
-    // 1. 特殊文字 (ん, っ, ゔ) 優先
-    for (const [marker, result] of Object.entries(SPECIAL_PAIRS)) {
-      if (text.startsWith(marker, i)) {
-        tokens.push({ type: 'special', char: marker, dakuten: '', smallChars: '', original: marker });
-        i += marker.length;
-        matched = true;
-        break;
-      }
-    }
-    if (matched) continue;
-
-    // 2. カナのチェック (Matrix, Extended, Voiced)
+    // 1. カナのチェック (Matrix, Extended, Voiced, SpecialRow)
     const allKanas = [
       ...KATAKANA_LIST,
       ...HIRAGANA_LIST,
       ...MATRIX.flat(),
       ...EXTENDED_MATRIX.flat(),
-      ...VOICED_SOURCES.flat()
+      ...VOICED_SOURCES.flat(),
+      ...SPECIAL_ROW
     ];
     
-    // 長い順にマッチを試みる
     const candidates = allKanas.filter(k => text.startsWith(k, i)).sort((a, b) => b.length - a.length);
     
     if (candidates.length > 0) {
@@ -139,7 +130,6 @@ export function tokenize(rawText: string): Token[] {
       const token: Token = { type: 'kana', char: match, dakuten: '', smallChars: '', original: match };
       i += match.length;
       
-      // 付属文字
       while (i < text.length) {
         if (SMALL_CHARS.includes(text[i]!)) {
           token.smallChars += text[i];
@@ -154,7 +144,7 @@ export function tokenize(rawText: string): Token[] {
 
     if (matched) continue;
 
-    // 3. 数字のチェック
+    // 2. 数字のチェック
     if (NUMBERS.includes(text[i]!)) {
       tokens.push({ type: 'number', char: text[i]!, dakuten: '', smallChars: '', original: text[i]! });
       i++;
@@ -162,7 +152,7 @@ export function tokenize(rawText: string): Token[] {
       continue;
     }
 
-    // 4. アルファベットのチェック
+    // 3. アルファベットのチェック
     if (ALPHA_UPPER.includes(text[i]!) || ALPHA_LOWER.includes(text[i]!)) {
       tokens.push({ type: 'alpha', char: text[i]!, dakuten: '', smallChars: '', original: text[i]! });
       i++;
@@ -182,7 +172,7 @@ const KATAKANA_LIST = Array.from({ length: 0x56 }, (_, i) => String.fromCharCode
 const HIRAGANA_LIST = Array.from({ length: 0x53 }, (_, i) => String.fromCharCode(0x3041 + i));
 
 /**
- * 動的なオフセットの計算（解析困難化のため）
+ * 動的なオフセットの計算
  */
 function getDynamicOffset(index: number, max: number): number {
   return (index * 13 + 7) % max;
@@ -197,10 +187,6 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
   let transformedCount = 0;
   
   return tokens.map(token => {
-    if (token.type === 'special') {
-      return SPECIAL_PAIRS[token.char] ?? token.char;
-    }
-
     const isDynamic = mode === 'chaos' || mode === 'eclipse';
     
     if (token.type === 'number') {
@@ -209,7 +195,6 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
       const set = NUMBERS;
       const idx = set.indexOf(token.char);
       const len = set.length;
-      // 可逆性を保つため、backward時は offset % len を引く
       const newIdx = (idx + (forward ? offset : len - (offset % len))) % len;
       return set[newIdx]!;
     }
@@ -229,7 +214,6 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
       let r = -1, c = -1;
       let targetChar = token.char;
       
-      // 座標特定
       const findInExtended = (char: string) => {
         for (let i = 0; i < 10; i++) {
           let j = MATRIX[i]!.indexOf(char);
@@ -243,6 +227,10 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
           let j = EXTENDED_MATRIX[i]!.indexOf(char);
           if (j !== -1) return { r: i, c: j };
         }
+        let jSpec = SPECIAL_ROW.indexOf(char);
+        if (jSpec !== -1) return { r: 15, c: jSpec };
+        let jSilentSpec = SILENT_SPECIAL_ROW.indexOf(char);
+        if (jSilentSpec !== -1) return { r: 15, c: jSilentSpec };
         return null;
       };
 
@@ -259,63 +247,44 @@ export function translate(text: string, forward: boolean, mode: TranslationMode 
         transformedCount++;
 
         if (mode === 'silent' || mode === 'whisper' || mode === 'eclipse' || mode === 'echo') {
-          // 15行モデル
-          const rotation = [0, 10, 5, 1, 11, 6, 2, 12, 7, 3, 13, 8, 4, 14, 9];
+          const rotation = [0, 10, 5, 15, 1, 11, 6, 2, 12, 7, 3, 13, 8, 4, 14, 9];
           const idx = rotation.indexOf(r);
           const len = rotation.length;
-          
-          let newR_idx;
-          if (forward) {
-            newR_idx = (idx + offset) % len;
-          } else {
-            newR_idx = (idx - (offset % len) + len) % len;
-          }
+          const newR_idx = (idx + (forward ? offset : len - (offset % len))) % len;
           const newR = rotation[newR_idx]!;
-
           const newC = shiftVowel(c, forward, mode);
           
           if (mode === 'echo') {
             if (newR < 10) return (MATRIX[newR]![newC]! + token.smallChars).normalize('NFC');
-            return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
+            if (newR < 15) return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
+            return (SPECIAL_ROW[newC]! + token.smallChars).normalize('NFC');
           } else {
             if (!forward) {
               if (newR < 10) return (MATRIX[newR]![newC]! + token.smallChars).normalize('NFC');
-              return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
+              if (newR < 15) return (VOICED_SOURCES[newR - 10]![newC]! + token.smallChars).normalize('NFC');
+              return (SPECIAL_ROW[newC]! + token.smallChars).normalize('NFC');
             }
             return EXTENDED_MATRIX[newR]![newC]! + token.smallChars;
           }
         } else {
-          // Deep/Chaosモード
           let baseR = r;
           let mark = '';
-          if (r >= 10 && r <= 13) { 
-            baseR = [1, 2, 3, 5][r - 10]!; 
-            mark = DAKUTEN; 
-          } else if (r === 14) { 
-            baseR = 5; 
-            mark = HANDAKUTEN; 
-          }
+          if (r >= 10 && r <= 13) { baseR = [1, 2, 3, 5][r - 10]!; mark = DAKUTEN; }
+          else if (r === 14) { baseR = 5; mark = HANDAKUTEN; }
           
-          const rowSet = [...L1, ...L2];
+          const rowSet = [...L1, ...L2, 15];
           const idx = rowSet.indexOf(baseR);
           const len = rowSet.length;
-          
-          let newR_idx;
-          if (forward) {
-            newR_idx = (idx + offset) % len;
-          } else {
-            newR_idx = (idx - (offset % len) + len) % len;
-          }
+          const newR_idx = (idx + (forward ? offset : len - (offset % len))) % len;
           const newR = rowSet[newR_idx]!;
-
           const newC = shiftVowel(c, forward, mode);
-          const newChar = MATRIX[newR]![newC]!;
-          return (newChar + mark + token.smallChars).normalize('NFC');
+          
+          if (newR === 15) return (SPECIAL_ROW[newC]! + token.smallChars).normalize('NFC');
+          return (MATRIX[newR]![newC]! + mark + token.smallChars).normalize('NFC');
         }
       }
       return token.original;
     }
-    
     return token.original;
   }).join('');
 }
@@ -328,21 +297,26 @@ export function getTransformationMap(forward: boolean, mode: TranslationMode = '
   
   if (mode === 'silent' || mode === 'whisper' || mode === 'eclipse' || mode === 'echo') {
     // 15 rows: (Base Hiragana 0-9) + (Voiced Sources 10-14)
-    for (let r = 0; r < 15; r++) {
+    const rowLimit = mode === 'eclipse' ? 3 : 15; // Eclipseは代表のみ表示
+    for (let r = 0; r < rowLimit; r++) {
       for (let c = 0; c < 5; c++) {
         const srcChar = r < 10 ? MATRIX[r]![c]! : VOICED_SOURCES[r - 10]![c]!;
         const isDynamic = mode === 'eclipse';
-        const offset = isDynamic ? getDynamicOffset(0, 15) : 1; // 監査用マップはインデックス0を基準
+        const offset = isDynamic ? getDynamicOffset(0, 15) : 1;
         
-        // 15行モデルでの回転
-        const rotation = [0, 10, 5, 1, 11, 6, 2, 12, 7, 3, 13, 8, 4, 14, 9];
+        // 16行モデルでの回転
+        const rotation = [0, 10, 5, 15, 1, 11, 6, 2, 12, 7, 3, 13, 8, 4, 14, 9];
         const idx = rotation.indexOf(r);
         const len = rotation.length;
         const newR_idx = (idx + (forward ? offset : len - offset)) % len;
         const newR = rotation[newR_idx]!;
 
         const newC = shiftVowel(c, forward, mode);
-        const resultChar = newR < 10 ? MATRIX[newR]![newC]! : VOICED_SOURCES[newR - 10]![newC]!;
+        
+        let resultChar = '';
+        if (newR < 10) resultChar = MATRIX[newR]![newC]!;
+        else if (newR < 15) resultChar = VOICED_SOURCES[newR - 10]![newC]!;
+        else resultChar = SPECIAL_ROW[newC]!;
         
         if (mode === 'echo') {
            map[srcChar] = resultChar;
@@ -378,7 +352,8 @@ export function getTransformationMap(forward: boolean, mode: TranslationMode = '
   }
   
   // 数字の追加
-  for (let i = 0; i < 5; i++) {
+  const numLimit = mode === 'echo' ? 10 : 5;
+  for (let i = 0; i < numLimit; i++) {
     const char = NUMBERS[i]!;
     const isDynamic = mode === 'eclipse' || mode === 'chaos';
     const offset = isDynamic ? getDynamicOffset(0, 15) : 1;
@@ -389,7 +364,8 @@ export function getTransformationMap(forward: boolean, mode: TranslationMode = '
   }
 
   // アルファベットの追加
-  for (let i = 0; i < 5; i++) {
+  const alphaLimit = mode === 'echo' ? 15 : 5;
+  for (let i = 0; i < alphaLimit; i++) {
     const char = ALPHA_UPPER[i]!;
     const isDynamic = mode === 'eclipse' || mode === 'chaos';
     const offset = isDynamic ? getDynamicOffset(0, 15) : 1;
@@ -407,3 +383,35 @@ export function getTransformationMap(forward: boolean, mode: TranslationMode = '
   return map;
 }
 
+
+/**
+ * 翻訳の整合性（全単射性）を検証する
+ */
+export function verifyBijectivity(text: string, mode: TranslationMode): {
+  ok: boolean;
+  forward: string;
+  backward: string;
+  diffIdx: number;
+} {
+  const forward = translate(text, true, mode);
+  const backward = translate(forward, false, mode);
+  
+  let ok = true;
+  let diffIdx = -1;
+  
+  // 文字列の正規化（比較のため）
+  const originalNorm = text.normalize('NFC');
+  const backwardNorm = backward.normalize('NFC');
+
+  if (originalNorm !== backwardNorm) {
+    ok = false;
+    for (let i = 0; i < Math.max(originalNorm.length, backwardNorm.length); i++) {
+      if (originalNorm[i] !== backwardNorm[i]) {
+        diffIdx = i;
+        break;
+      }
+    }
+  }
+  
+  return { ok, forward, backward, diffIdx };
+}
